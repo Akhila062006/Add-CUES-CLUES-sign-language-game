@@ -1,4 +1,3 @@
-```python
 import streamlit as st
 import cv2
 import mediapipe as mp
@@ -7,8 +6,10 @@ import joblib
 from pathlib import Path
 from urllib.request import urlretrieve
 
+
 # =========================================================
-# CUES & CLUES - Browser Sign Language Game
+# CUES & CLUES
+# AI-POWERED SIGN LANGUAGE COMMUNICATION GAME
 # =========================================================
 
 st.set_page_config(
@@ -16,6 +17,7 @@ st.set_page_config(
     page_icon="🤟",
     layout="centered"
 )
+
 
 # =========================================================
 # PATHS
@@ -33,30 +35,32 @@ HAND_MODEL_URL = (
     "hand_landmarker/float16/1/hand_landmarker.task"
 )
 
+
 # =========================================================
-# DOWNLOAD MEDIAPIPE HAND MODEL
+# DOWNLOAD MEDIAPIPE HAND LANDMARK MODEL
 # =========================================================
 
 @st.cache_resource
 def download_hand_model():
 
-    if not HAND_MODEL_PATH.exists():
+    if HAND_MODEL_PATH.exists():
+        return HAND_MODEL_PATH
 
-        try:
-            urlretrieve(
-                HAND_MODEL_URL,
-                HAND_MODEL_PATH
-            )
+    try:
+        urlretrieve(
+            HAND_MODEL_URL,
+            HAND_MODEL_PATH
+        )
 
-        except Exception as e:
+    except Exception as e:
 
-            st.error(
-                "Could not download the MediaPipe hand model."
-            )
+        st.error(
+            "❌ Could not download the MediaPipe hand model."
+        )
 
-            st.error(str(e))
+        st.code(str(e))
 
-            st.stop()
+        st.stop()
 
     return HAND_MODEL_PATH
 
@@ -68,17 +72,29 @@ def download_hand_model():
 @st.cache_resource
 def load_knn_model():
 
+    if not MODEL_PATH.exists():
+
+        st.error(
+            f"❌ KNN model not found:\n{MODEL_PATH}"
+        )
+
+        st.stop()
+
     try:
 
-        return joblib.load(MODEL_PATH)
+        model = joblib.load(
+            MODEL_PATH
+        )
+
+        return model
 
     except Exception as e:
 
         st.error(
-            "Could not load the KNN AI model."
+            "❌ Could not load the KNN AI model."
         )
 
-        st.error(str(e))
+        st.code(str(e))
 
         st.stop()
 
@@ -96,29 +112,41 @@ def create_hand_landmarker():
 
         BaseOptions = mp.tasks.BaseOptions
 
-        HandLandmarker = mp.tasks.vision.HandLandmarker
+        HandLandmarker = (
+            mp.tasks.vision.HandLandmarker
+        )
 
         HandLandmarkerOptions = (
             mp.tasks.vision.HandLandmarkerOptions
         )
 
-        VisionRunningMode = (
+        RunningMode = (
             mp.tasks.vision.RunningMode
         )
 
         options = HandLandmarkerOptions(
+
             base_options=BaseOptions(
-                model_asset_path=str(hand_model)
+                model_asset_path=str(
+                    hand_model
+                )
             ),
-            running_mode=VisionRunningMode.IMAGE,
+
+            running_mode=RunningMode.IMAGE,
+
             num_hands=1,
-            min_hand_detection_confidence=0.7,
-            min_hand_presence_confidence=0.7,
-            min_tracking_confidence=0.7
+
+            min_hand_detection_confidence=0.5,
+
+            min_hand_presence_confidence=0.5,
+
+            min_tracking_confidence=0.5
         )
 
-        landmarker = HandLandmarker.create_from_options(
-            options
+        landmarker = (
+            HandLandmarker.create_from_options(
+                options
+            )
         )
 
         return landmarker
@@ -126,10 +154,10 @@ def create_hand_landmarker():
     except Exception as e:
 
         st.error(
-            "Could not start MediaPipe Hand Landmarker."
+            "❌ Could not start MediaPipe Hand Landmarker."
         )
 
-        st.error(str(e))
+        st.code(str(e))
 
         st.stop()
 
@@ -144,7 +172,7 @@ hand_landmarker = create_hand_landmarker()
 
 
 # =========================================================
-# GAME DATA
+# GAME MISSIONS
 # =========================================================
 
 MISSIONS = [
@@ -175,22 +203,15 @@ MISSIONS = [
 # =========================================================
 
 if "game_started" not in st.session_state:
-
     st.session_state.game_started = False
 
-
 if "mission_index" not in st.session_state:
-
     st.session_state.mission_index = 0
 
-
 if "score" not in st.session_state:
-
     st.session_state.score = 0
 
-
 if "lives" not in st.session_state:
-
     st.session_state.lives = 3
 
 
@@ -219,9 +240,13 @@ if not st.session_state.game_started:
         "🎯 Complete 3 communication missions."
     )
 
-    st.markdown("### 🎮 Game Rules")
+    st.markdown(
+        "### 🎮 Game Rules"
+    )
 
-    st.write("❤️ Lives: 3")
+    st.write(
+        "❤️ Lives: 3"
+    )
 
     st.write(
         "⭐ Correct mission: +10 points"
@@ -234,6 +259,8 @@ if not st.session_state.game_started:
     st.write(
         "📷 Use your camera to submit your sign."
     )
+
+    st.markdown("---")
 
     if st.button(
         "🚀 START GAME",
@@ -259,7 +286,9 @@ if not st.session_state.game_started:
 
 if st.session_state.lives <= 0:
 
-    st.error("💀 GAME OVER")
+    st.error(
+        "💀 GAME OVER"
+    )
 
     st.markdown(
         f"## Final Score: {st.session_state.score}"
@@ -268,6 +297,8 @@ if st.session_state.lives <= 0:
     st.write(
         "You ran out of lives."
     )
+
+    st.markdown("---")
 
     if st.button(
         "🔄 PLAY AGAIN",
@@ -291,14 +322,20 @@ if st.session_state.lives <= 0:
 # GAME COMPLETED
 # =========================================================
 
-if st.session_state.mission_index >= len(MISSIONS):
+if (
+    st.session_state.mission_index
+    >= len(MISSIONS)
+):
 
-    st.success("🏆 GAME COMPLETED!")
+    st.success(
+        "🏆 GAME COMPLETED!"
+    )
 
     st.balloons()
 
     st.markdown(
-        f"## ⭐ Final Score: {st.session_state.score}"
+        f"## ⭐ Final Score: "
+        f"{st.session_state.score}"
     )
 
     st.write(
@@ -309,6 +346,8 @@ if st.session_state.mission_index >= len(MISSIONS):
     st.write(
         "🎉 Excellent communication!"
     )
+
+    st.markdown("---")
 
     if st.button(
         "🔄 PLAY AGAIN",
@@ -371,7 +410,7 @@ with col3:
 
 
 # =========================================================
-# MISSION
+# MISSION DISPLAY
 # =========================================================
 
 st.markdown("---")
@@ -380,7 +419,7 @@ st.header(
     f"🎯 {mission}"
 )
 
-st.write(
+st.markdown(
     f"### {instruction}"
 )
 
@@ -401,10 +440,14 @@ picture = st.camera_input(
 
 
 # =========================================================
-# PROCESS CAMERA IMAGE
+# CAMERA PROCESSING
 # =========================================================
 
 if picture is not None:
+
+    # -----------------------------------------------------
+    # READ IMAGE
+    # -----------------------------------------------------
 
     image_bytes = picture.getvalue()
 
@@ -421,14 +464,14 @@ if picture is not None:
     if frame is None:
 
         st.error(
-            "Could not read the camera image."
+            "❌ Could not read the camera image."
         )
 
         st.stop()
 
 
     # -----------------------------------------------------
-    # Convert BGR -> RGB
+    # CONVERT BGR TO RGB
     # -----------------------------------------------------
 
     rgb = cv2.cvtColor(
@@ -438,17 +481,29 @@ if picture is not None:
 
 
     # -----------------------------------------------------
-    # Create MediaPipe Image
+    # CREATE MEDIAPIPE IMAGE
     # -----------------------------------------------------
 
-    mp_image = mp.Image(
-        image_format=mp.ImageFormat.SRGB,
-        data=rgb
-    )
+    try:
+
+        mp_image = mp.Image(
+            image_format=mp.ImageFormat.SRGB,
+            data=rgb
+        )
+
+    except Exception as e:
+
+        st.error(
+            "❌ Could not create MediaPipe image."
+        )
+
+        st.code(str(e))
+
+        st.stop()
 
 
     # -----------------------------------------------------
-    # Detect Hand
+    # DETECT HAND
     # -----------------------------------------------------
 
     try:
@@ -460,16 +515,16 @@ if picture is not None:
     except Exception as e:
 
         st.error(
-            "Hand detection failed."
+            "❌ Hand detection failed."
         )
 
-        st.error(str(e))
+        st.code(str(e))
 
         st.stop()
 
 
     # =====================================================
-    # HAND FOUND
+    # HAND DETECTED
     # =====================================================
 
     if result.hand_landmarks:
@@ -478,7 +533,7 @@ if picture is not None:
 
 
         # -------------------------------------------------
-        # DRAW LANDMARKS
+        # HAND CONNECTIONS
         # -------------------------------------------------
 
         connections = [
@@ -509,15 +564,16 @@ if picture is not None:
             (19, 20),
 
             (0, 17)
-
         ]
 
 
-        height, width = frame.shape[:2]
+        height, width = (
+            frame.shape[:2]
+        )
 
 
         # -------------------------------------------------
-        # Draw points
+        # DRAW LANDMARK POINTS
         # -------------------------------------------------
 
         for landmark in hand:
@@ -540,7 +596,7 @@ if picture is not None:
 
 
         # -------------------------------------------------
-        # Draw connections
+        # DRAW CONNECTIONS
         # -------------------------------------------------
 
         for start, end in connections:
@@ -571,11 +627,10 @@ if picture is not None:
 
 
         # =================================================
-        # EXTRACT 21 LANDMARKS
+        # EXTRACT LANDMARK FEATURES
         # =================================================
 
         landmarks = []
-
 
         for landmark in hand:
 
@@ -595,11 +650,14 @@ if picture is not None:
         input_data = np.array(
             landmarks,
             dtype=np.float32
-        ).reshape(1, -1)
+        ).reshape(
+            1,
+            -1
+        )
 
 
         # =================================================
-        # KNN PREDICTION
+        # AI PREDICTION
         # =================================================
 
         try:
@@ -610,21 +668,21 @@ if picture is not None:
 
             prediction = str(
                 prediction
-            )
+            ).upper().strip()
 
         except Exception as e:
 
             st.error(
-                "The AI model could not make a prediction."
+                "❌ The AI model could not make a prediction."
             )
 
-            st.error(str(e))
+            st.code(str(e))
 
             st.stop()
 
 
         # =================================================
-        # DISPLAY IMAGE
+        # DISPLAY DETECTED HAND
         # =================================================
 
         st.image(
@@ -638,7 +696,7 @@ if picture is not None:
 
 
         # =================================================
-        # PREDICTION
+        # SHOW AI RESULT
         # =================================================
 
         st.markdown(
@@ -686,7 +744,7 @@ if picture is not None:
 
 
     # =====================================================
-    # NO HAND
+    # NO HAND DETECTED
     # =====================================================
 
     else:
@@ -731,4 +789,3 @@ st.markdown("---")
 st.caption(
     "CUES & CLUES • AI-powered Sign Language Communication"
 )
-```
