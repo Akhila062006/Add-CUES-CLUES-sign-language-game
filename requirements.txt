@@ -1,6 +1,6 @@
 streamlit
 opencv-python-headless==4.11.0.86
-mediapipe
+mediapipe==0.10.21
 scikit-learn
 numpy
 pandas
