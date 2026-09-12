@@ -1,9 +1,11 @@
+```python
 import streamlit as st
 import cv2
 import mediapipe as mp
 import numpy as np
 import joblib
 from pathlib import Path
+from urllib.request import urlretrieve
 
 # =========================================================
 # CUES & CLUES - Browser Sign Language Game
@@ -16,64 +18,196 @@ st.set_page_config(
 )
 
 # =========================================================
-# LOAD MODEL
+# PATHS
 # =========================================================
 
 BASE_DIR = Path(__file__).resolve().parent
+
 MODEL_PATH = BASE_DIR / "knn_model.pkl"
 
-try:
-    model = joblib.load(MODEL_PATH)
-except Exception as e:
-    st.error(f"Could not load the AI model: {e}")
-    st.stop()
+HAND_MODEL_PATH = BASE_DIR / "hand_landmarker.task"
+
+HAND_MODEL_URL = (
+    "https://storage.googleapis.com/"
+    "mediapipe-models/hand_landmarker/"
+    "hand_landmarker/float16/1/hand_landmarker.task"
+)
 
 # =========================================================
-# MEDIAPIPE
+# DOWNLOAD MEDIAPIPE HAND MODEL
 # =========================================================
 
-mp_hands = mp.solutions.hands
-mp_draw = mp.solutions.drawing_utils
+@st.cache_resource
+def download_hand_model():
+
+    if not HAND_MODEL_PATH.exists():
+
+        try:
+            urlretrieve(
+                HAND_MODEL_URL,
+                HAND_MODEL_PATH
+            )
+
+        except Exception as e:
+
+            st.error(
+                "Could not download the MediaPipe hand model."
+            )
+
+            st.error(str(e))
+
+            st.stop()
+
+    return HAND_MODEL_PATH
+
+
+# =========================================================
+# LOAD KNN MODEL
+# =========================================================
+
+@st.cache_resource
+def load_knn_model():
+
+    try:
+
+        return joblib.load(MODEL_PATH)
+
+    except Exception as e:
+
+        st.error(
+            "Could not load the KNN AI model."
+        )
+
+        st.error(str(e))
+
+        st.stop()
+
+
+# =========================================================
+# CREATE MEDIAPIPE HAND LANDMARKER
+# =========================================================
+
+@st.cache_resource
+def create_hand_landmarker():
+
+    hand_model = download_hand_model()
+
+    try:
+
+        BaseOptions = mp.tasks.BaseOptions
+
+        HandLandmarker = mp.tasks.vision.HandLandmarker
+
+        HandLandmarkerOptions = (
+            mp.tasks.vision.HandLandmarkerOptions
+        )
+
+        VisionRunningMode = (
+            mp.tasks.vision.RunningMode
+        )
+
+        options = HandLandmarkerOptions(
+            base_options=BaseOptions(
+                model_asset_path=str(hand_model)
+            ),
+            running_mode=VisionRunningMode.IMAGE,
+            num_hands=1,
+            min_hand_detection_confidence=0.7,
+            min_hand_presence_confidence=0.7,
+            min_tracking_confidence=0.7
+        )
+
+        landmarker = HandLandmarker.create_from_options(
+            options
+        )
+
+        return landmarker
+
+    except Exception as e:
+
+        st.error(
+            "Could not start MediaPipe Hand Landmarker."
+        )
+
+        st.error(str(e))
+
+        st.stop()
+
+
+# =========================================================
+# LOAD AI COMPONENTS
+# =========================================================
+
+model = load_knn_model()
+
+hand_landmarker = create_hand_landmarker()
+
 
 # =========================================================
 # GAME DATA
 # =========================================================
 
 MISSIONS = [
-    ("Mission 1", "You are thirsty. Show WATER.", "WATER"),
-    ("Mission 2", "You need assistance. Show HELP.", "HELP"),
-    ("Mission 3", "Answer the question. Show YES.", "YES"),
+
+    (
+        "Mission 1",
+        "You are thirsty. Show WATER.",
+        "WATER"
+    ),
+
+    (
+        "Mission 2",
+        "You need assistance. Show HELP.",
+        "HELP"
+    ),
+
+    (
+        "Mission 3",
+        "Answer the question. Show YES.",
+        "YES"
+    )
+
 ]
+
 
 # =========================================================
 # SESSION STATE
 # =========================================================
 
 if "game_started" not in st.session_state:
+
     st.session_state.game_started = False
 
+
 if "mission_index" not in st.session_state:
+
     st.session_state.mission_index = 0
 
+
 if "score" not in st.session_state:
+
     st.session_state.score = 0
 
+
 if "lives" not in st.session_state:
+
     st.session_state.lives = 3
 
-if "message" not in st.session_state:
-    st.session_state.message = ""
 
 # =========================================================
 # TITLE
 # =========================================================
 
 st.title("🤟 CUES & CLUES")
-st.subheader("Sign Language Communication Game")
+
+st.subheader(
+    "AI-Powered Sign Language Communication Game"
+)
 
 st.write(
-    "Use your hand signs to complete each mission!"
+    "Complete each mission using sign language."
 )
+
 
 # =========================================================
 # START SCREEN
@@ -82,48 +216,79 @@ st.write(
 if not st.session_state.game_started:
 
     st.info(
-        "🎯 Complete 3 missions using sign language."
+        "🎯 Complete 3 communication missions."
     )
 
-    st.write("### Game Rules")
-    st.write("❤️ Lives: 3")
-    st.write("⭐ Each completed mission: +10 points")
-    st.write("🤟 Hold the correct sign to complete a mission.")
+    st.markdown("### 🎮 Game Rules")
 
-    if st.button("🚀 START GAME", use_container_width=True):
+    st.write("❤️ Lives: 3")
+
+    st.write(
+        "⭐ Correct mission: +10 points"
+    )
+
+    st.write(
+        "🤟 Show the requested sign clearly."
+    )
+
+    st.write(
+        "📷 Use your camera to submit your sign."
+    )
+
+    if st.button(
+        "🚀 START GAME",
+        use_container_width=True
+    ):
 
         st.session_state.game_started = True
+
         st.session_state.mission_index = 0
+
         st.session_state.score = 0
+
         st.session_state.lives = 3
+
         st.rerun()
 
     st.stop()
 
+
 # =========================================================
-# GAME OVER CHECK
+# GAME OVER
 # =========================================================
 
 if st.session_state.lives <= 0:
 
     st.error("💀 GAME OVER")
 
-    st.write(
-        f"Final Score: **{st.session_state.score}**"
+    st.markdown(
+        f"## Final Score: {st.session_state.score}"
     )
 
-    if st.button("🔄 PLAY AGAIN", use_container_width=True):
+    st.write(
+        "You ran out of lives."
+    )
+
+    if st.button(
+        "🔄 PLAY AGAIN",
+        use_container_width=True
+    ):
 
         st.session_state.game_started = False
+
         st.session_state.mission_index = 0
+
         st.session_state.score = 0
+
         st.session_state.lives = 3
+
         st.rerun()
 
     st.stop()
 
+
 # =========================================================
-# GAME COMPLETED CHECK
+# GAME COMPLETED
 # =========================================================
 
 if st.session_state.mission_index >= len(MISSIONS):
@@ -132,31 +297,47 @@ if st.session_state.mission_index >= len(MISSIONS):
 
     st.balloons()
 
-    st.write(
-        f"### Final Score: {st.session_state.score}"
+    st.markdown(
+        f"## ⭐ Final Score: {st.session_state.score}"
     )
 
     st.write(
-        f"❤️ Lives Remaining: {st.session_state.lives}"
+        f"❤️ Lives Remaining: "
+        f"{st.session_state.lives}"
     )
 
-    if st.button("🔄 PLAY AGAIN", use_container_width=True):
+    st.write(
+        "🎉 Excellent communication!"
+    )
+
+    if st.button(
+        "🔄 PLAY AGAIN",
+        use_container_width=True
+    ):
 
         st.session_state.game_started = False
+
         st.session_state.mission_index = 0
+
         st.session_state.score = 0
+
         st.session_state.lives = 3
+
         st.rerun()
 
     st.stop()
+
 
 # =========================================================
 # CURRENT MISSION
 # =========================================================
 
-mission, instruction, correct_gesture = MISSIONS[
-    st.session_state.mission_index
-]
+mission, instruction, correct_gesture = (
+    MISSIONS[
+        st.session_state.mission_index
+    ]
+)
+
 
 # =========================================================
 # SCOREBOARD
@@ -164,50 +345,63 @@ mission, instruction, correct_gesture = MISSIONS[
 
 col1, col2, col3 = st.columns(3)
 
+
 with col1:
+
     st.metric(
-        "⭐ Score",
+        "⭐ SCORE",
         st.session_state.score
     )
 
+
 with col2:
+
     st.metric(
-        "❤️ Lives",
+        "❤️ LIVES",
         st.session_state.lives
     )
 
+
 with col3:
+
     st.metric(
-        "🎯 Mission",
+        "🎯 MISSION",
         f"{st.session_state.mission_index + 1}/3"
     )
 
+
 # =========================================================
-# MISSION CARD
+# MISSION
 # =========================================================
 
 st.markdown("---")
 
-st.header(f"🎯 {mission}")
+st.header(
+    f"🎯 {mission}"
+)
 
-st.write(f"### {instruction}")
+st.write(
+    f"### {instruction}"
+)
 
 st.success(
-    f"Show the sign: **{correct_gesture}**"
+    f"🤟 Required sign: **{correct_gesture}**"
 )
 
 st.markdown("---")
+
 
 # =========================================================
 # CAMERA
 # =========================================================
 
 picture = st.camera_input(
-    "📷 Show your sign to the camera"
+    "📷 Take a picture of your sign"
 )
 
+
 # =========================================================
-# PROCESS IMAGE
+# PROCESS CAMERA IMAGE
 # =========================================================
 
 if picture is not None:
@@ -226,89 +420,241 @@ if picture is not None:
 
     if frame is None:
 
-        st.error("Could not read camera image.")
+        st.error(
+            "Could not read the camera image."
+        )
+
         st.stop()
 
+
+    # -----------------------------------------------------
     # Convert BGR -> RGB
+    # -----------------------------------------------------
+
     rgb = cv2.cvtColor(
         frame,
         cv2.COLOR_BGR2RGB
     )
 
-    # =====================================================
-    # MEDIAPIPE DETECTION
-    # =====================================================
 
-    with mp_hands.Hands(
-        static_image_mode=True,
-        max_num_hands=1,
-        min_detection_confidence=0.7
-    ) as hands:
+    # -----------------------------------------------------
+    # Create MediaPipe Image
+    # -----------------------------------------------------
 
-        results = hands.process(rgb)
+    mp_image = mp.Image(
+        image_format=mp.ImageFormat.SRGB,
+        data=rgb
+    )
 
-    # =====================================================
-    # HAND DETECTED
-    # =====================================================
 
-    if results.multi_hand_landmarks:
+    # -----------------------------------------------------
+    # Detect Hand
+    # -----------------------------------------------------
 
-        hand_landmarks = results.multi_hand_landmarks[0]
+    try:
 
-        # Draw landmarks
-        mp_draw.draw_landmarks(
-            frame,
-            hand_landmarks,
-            mp_hands.HAND_CONNECTIONS
+        result = hand_landmarker.detect(
+            mp_image
         )
 
+    except Exception as e:
+
+        st.error(
+            "Hand detection failed."
+        )
+
+        st.error(str(e))
+
+        st.stop()
+
+
+    # =====================================================
+    # HAND FOUND
+    # =====================================================
+
+    if result.hand_landmarks:
+
+        hand = result.hand_landmarks[0]
+
+
+        # -------------------------------------------------
+        # DRAW LANDMARKS
+        # -------------------------------------------------
+
+        connections = [
+
+            (0, 1),
+            (1, 2),
+            (2, 3),
+            (3, 4),
+
+            (0, 5),
+            (5, 6),
+            (6, 7),
+            (7, 8),
+
+            (5, 9),
+            (9, 10),
+            (10, 11),
+            (11, 12),
+
+            (9, 13),
+            (13, 14),
+            (14, 15),
+            (15, 16),
+
+            (13, 17),
+            (17, 18),
+            (18, 19),
+            (19, 20),
+
+            (0, 17)
+
+        ]
+
+
+        height, width = frame.shape[:2]
+
+
+        # -------------------------------------------------
+        # Draw points
+        # -------------------------------------------------
+
+        for landmark in hand:
+
+            x = int(
+                landmark.x * width
+            )
+
+            y = int(
+                landmark.y * height
+            )
+
+            cv2.circle(
+                frame,
+                (x, y),
+                5,
+                (0, 255, 0),
+                -1
+            )
+
+
+        # -------------------------------------------------
+        # Draw connections
+        # -------------------------------------------------
+
+        for start, end in connections:
+
+            x1 = int(
+                hand[start].x * width
+            )
+
+            y1 = int(
+                hand[start].y * height
+            )
+
+            x2 = int(
+                hand[end].x * width
+            )
+
+            y2 = int(
+                hand[end].y * height
+            )
+
+            cv2.line(
+                frame,
+                (x1, y1),
+                (x2, y2),
+                (0, 255, 0),
+                2
+            )
+
+
         # =================================================
-        # LANDMARK FEATURES
+        # EXTRACT 21 LANDMARKS
         # =================================================
 
         landmarks = []
 
-        for landmark in hand_landmarks.landmark:
 
-            landmarks.append(landmark.x)
-            landmarks.append(landmark.y)
-            landmarks.append(landmark.z)
+        for landmark in hand:
+
+            landmarks.append(
+                landmark.x
+            )
+
+            landmarks.append(
+                landmark.y
+            )
+
+            landmarks.append(
+                landmark.z
+            )
+
 
         input_data = np.array(
-            landmarks
+            landmarks,
+            dtype=np.float32
         ).reshape(1, -1)
 
+
         # =================================================
-        # PREDICTION
+        # KNN PREDICTION
         # =================================================
 
-        prediction = model.predict(
-            input_data
-        )[0]
+        try:
 
-        prediction = str(prediction)
+            prediction = model.predict(
+                input_data
+            )[0]
+
+            prediction = str(
+                prediction
+            )
+
+        except Exception as e:
+
+            st.error(
+                "The AI model could not make a prediction."
+            )
+
+            st.error(str(e))
+
+            st.stop()
+
+
+        # =================================================
+        # DISPLAY IMAGE
+        # =================================================
 
         st.image(
             cv2.cvtColor(
                 frame,
                 cv2.COLOR_BGR2RGB
             ),
-            caption="Hand detected",
+            caption="🤟 Hand detected",
             use_container_width=True
         )
 
-        st.write(
-            f"### Detected sign: **{prediction}**"
-        )
 
         # =================================================
-        # CORRECT
+        # PREDICTION
+        # =================================================
+
+        st.markdown(
+            f"### 🤖 Detected sign: **{prediction}**"
+        )
+
+
+        # =================================================
+        # CORRECT ANSWER
         # =================================================
 
         if prediction == correct_gesture:
 
             st.success(
-                f"✅ CORRECT! You showed {correct_gesture}."
+                f"✅ CORRECT! "
+                f"You showed **{correct_gesture}**."
             )
 
             st.session_state.score += 10
@@ -317,31 +663,31 @@ if picture is not None:
 
             st.balloons()
 
-            if st.session_state.mission_index < 3:
-
-                st.button(
-                    "➡️ Continue to next mission",
-                    disabled=True
-                )
-
             st.rerun()
 
+
         # =================================================
-        # WRONG
+        # WRONG ANSWER
         # =================================================
 
         else:
 
             st.warning(
-                f"❌ Detected {prediction}. "
-                f"Try showing {correct_gesture}."
+                f"❌ The AI detected **{prediction}**."
             )
 
-            if st.button(
-                "Try Again",
-                use_container_width=True
-            ):
-                st.rerun()
+            st.info(
+                f"Try showing **{correct_gesture}**."
+            )
+
+            st.write(
+                "📷 Take another picture when ready."
+            )
+
+
+    # =====================================================
+    # NO HAND
+    # =====================================================
 
     else:
 
@@ -350,19 +696,31 @@ if picture is not None:
                 frame,
                 cv2.COLOR_BGR2RGB
             ),
-            caption="No hand detected"
+            caption="No hand detected",
+            use_container_width=True
         )
 
         st.warning(
-            "✋ No hand detected. "
-            "Place your hand clearly in front of the camera."
+            "✋ No hand detected."
         )
+
+        st.info(
+            "Place your hand clearly inside "
+            "the camera frame and try again."
+        )
+
+
+# =========================================================
+# CAMERA INSTRUCTIONS
+# =========================================================
 
 else:
 
     st.info(
-        "📷 Click the camera button above and show your sign."
+        "📷 Click the camera button above, "
+        "allow camera access, and show your sign."
     )
+
 
 # =========================================================
 # FOOTER
@@ -373,3 +731,4 @@ st.markdown("---")
 st.caption(
     "CUES & CLUES • AI-powered Sign Language Communication"
 )
+```
