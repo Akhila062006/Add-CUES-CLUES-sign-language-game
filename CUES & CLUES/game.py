@@ -1,410 +1,375 @@
+import streamlit as st
 import cv2
 import mediapipe as mp
 import numpy as np
 import joblib
 from pathlib import Path
 
-# ==========================================
-# CUES & CLUES - Sign Language Game
-# ==========================================
+# =========================================================
+# CUES & CLUES - Browser Sign Language Game
+# =========================================================
 
-# Load KNN model from the same folder as this file
+st.set_page_config(
+    page_title="CUES & CLUES",
+    page_icon="🤟",
+    layout="centered"
+)
+
+# =========================================================
+# LOAD MODEL
+# =========================================================
+
 BASE_DIR = Path(__file__).resolve().parent
 MODEL_PATH = BASE_DIR / "knn_model.pkl"
 
-model = joblib.load(MODEL_PATH)
+try:
+    model = joblib.load(MODEL_PATH)
+except Exception as e:
+    st.error(f"Could not load the AI model: {e}")
+    st.stop()
 
-# ==========================================
+# =========================================================
 # MEDIAPIPE
-# ==========================================
+# =========================================================
 
 mp_hands = mp.solutions.hands
 mp_draw = mp.solutions.drawing_utils
 
-hands = mp_hands.Hands(
-    static_image_mode=False,
-    max_num_hands=1,
-    min_detection_confidence=0.7,
-    min_tracking_confidence=0.7
-)
+# =========================================================
+# GAME DATA
+# =========================================================
 
-# ==========================================
-# GAME SETTINGS
-# ==========================================
-
-missions = [
+MISSIONS = [
     ("Mission 1", "You are thirsty. Show WATER.", "WATER"),
     ("Mission 2", "You need assistance. Show HELP.", "HELP"),
-    ("Mission 3", "Answer the question. Show YES.", "YES")
+    ("Mission 3", "Answer the question. Show YES.", "YES"),
 ]
 
-score = 0
-lives = 3
+# =========================================================
+# SESSION STATE
+# =========================================================
 
-# ==========================================
+if "game_started" not in st.session_state:
+    st.session_state.game_started = False
+
+if "mission_index" not in st.session_state:
+    st.session_state.mission_index = 0
+
+if "score" not in st.session_state:
+    st.session_state.score = 0
+
+if "lives" not in st.session_state:
+    st.session_state.lives = 3
+
+if "message" not in st.session_state:
+    st.session_state.message = ""
+
+# =========================================================
+# TITLE
+# =========================================================
+
+st.title("🤟 CUES & CLUES")
+st.subheader("Sign Language Communication Game")
+
+st.write(
+    "Use your hand signs to complete each mission!"
+)
+
+# =========================================================
 # START SCREEN
-# ==========================================
+# =========================================================
 
-print("\n================================")
-print("        CUES & CLUES")
-print("================================")
-print("     SIGN LANGUAGE GAME")
-print("================================")
-print()
-print("Lives : 3")
-print("Score : 0")
-print()
-print("Missions : 3")
-print()
-print("Press ENTER to start the game.")
-print("Press Q to quit.")
-print("================================")
+if not st.session_state.game_started:
 
-choice = input()
+    st.info(
+        "🎯 Complete 3 missions using sign language."
+    )
 
-if choice.lower() == "q":
-    print("Game closed.")
-    hands.close()
-    exit()
+    st.write("### Game Rules")
+    st.write("❤️ Lives: 3")
+    st.write("⭐ Each completed mission: +10 points")
+    st.write("🤟 Hold the correct sign to complete a mission.")
 
-# ==========================================
-# GAME START
-# ==========================================
+    if st.button("🚀 START GAME", use_container_width=True):
 
-print("\nGAME STARTED!")
-print("Good luck!")
+        st.session_state.game_started = True
+        st.session_state.mission_index = 0
+        st.session_state.score = 0
+        st.session_state.lives = 3
+        st.rerun()
 
-# ==========================================
-# MISSION LOOP
-# ==========================================
+    st.stop()
 
-for mission, instruction, correct_gesture in missions:
+# =========================================================
+# GAME OVER CHECK
+# =========================================================
 
-    if lives <= 0:
-        break
+if st.session_state.lives <= 0:
 
-    print("\n--------------------------------")
-    print(mission)
-    print(instruction)
-    print("--------------------------------")
+    st.error("💀 GAME OVER")
 
-    cap = cv2.VideoCapture(0)
+    st.write(
+        f"Final Score: **{st.session_state.score}**"
+    )
 
-    completed = False
-    correct_frames = 0
-    wrong_frames = 0
-    prediction = "No hand detected"
+    if st.button("🔄 PLAY AGAIN", use_container_width=True):
 
-    # ======================================
-    # CAMERA LOOP
-    # ======================================
+        st.session_state.game_started = False
+        st.session_state.mission_index = 0
+        st.session_state.score = 0
+        st.session_state.lives = 3
+        st.rerun()
 
-    while cap.isOpened() and not completed:
+    st.stop()
 
-        success, frame = cap.read()
+# =========================================================
+# GAME COMPLETED CHECK
+# =========================================================
 
-        if not success:
-            print("Camera error!")
-            break
+if st.session_state.mission_index >= len(MISSIONS):
 
-        # Mirror camera
-        frame = cv2.flip(frame, 1)
+    st.success("🏆 GAME COMPLETED!")
 
-        # Convert BGR → RGB
-        rgb = cv2.cvtColor(
-            frame,
-            cv2.COLOR_BGR2RGB
-        )
+    st.balloons()
 
-        # Detect hand
+    st.write(
+        f"### Final Score: {st.session_state.score}"
+    )
+
+    st.write(
+        f"❤️ Lives Remaining: {st.session_state.lives}"
+    )
+
+    if st.button("🔄 PLAY AGAIN", use_container_width=True):
+
+        st.session_state.game_started = False
+        st.session_state.mission_index = 0
+        st.session_state.score = 0
+        st.session_state.lives = 3
+        st.rerun()
+
+    st.stop()
+
+# =========================================================
+# CURRENT MISSION
+# =========================================================
+
+mission, instruction, correct_gesture = MISSIONS[
+    st.session_state.mission_index
+]
+
+# =========================================================
+# SCOREBOARD
+# =========================================================
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.metric(
+        "⭐ Score",
+        st.session_state.score
+    )
+
+with col2:
+    st.metric(
+        "❤️ Lives",
+        st.session_state.lives
+    )
+
+with col3:
+    st.metric(
+        "🎯 Mission",
+        f"{st.session_state.mission_index + 1}/3"
+    )
+
+# =========================================================
+# MISSION CARD
+# =========================================================
+
+st.markdown("---")
+
+st.header(f"🎯 {mission}")
+
+st.write(f"### {instruction}")
+
+st.success(
+    f"Show the sign: **{correct_gesture}**"
+)
+
+st.markdown("---")
+
+# =========================================================
+# CAMERA
+# =========================================================
+
+picture = st.camera_input(
+    "📷 Show your sign to the camera"
+)
+
+# =========================================================
+# PROCESS IMAGE
+# =========================================================
+
+if picture is not None:
+
+    image_bytes = picture.getvalue()
+
+    image_array = np.frombuffer(
+        image_bytes,
+        dtype=np.uint8
+    )
+
+    frame = cv2.imdecode(
+        image_array,
+        cv2.IMREAD_COLOR
+    )
+
+    if frame is None:
+
+        st.error("Could not read camera image.")
+        st.stop()
+
+    # Convert BGR -> RGB
+    rgb = cv2.cvtColor(
+        frame,
+        cv2.COLOR_BGR2RGB
+    )
+
+    # =====================================================
+    # MEDIAPIPE DETECTION
+    # =====================================================
+
+    with mp_hands.Hands(
+        static_image_mode=True,
+        max_num_hands=1,
+        min_detection_confidence=0.7
+    ) as hands:
+
         results = hands.process(rgb)
 
-        prediction = "No hand detected"
+    # =====================================================
+    # HAND DETECTED
+    # =====================================================
 
-        # ==================================
-        # HAND DETECTED
-        # ==================================
+    if results.multi_hand_landmarks:
 
-        if results.multi_hand_landmarks:
+        hand_landmarks = results.multi_hand_landmarks[0]
 
-            for hand_landmarks in results.multi_hand_landmarks:
-
-                # Draw landmarks
-                mp_draw.draw_landmarks(
-                    frame,
-                    hand_landmarks,
-                    mp_hands.HAND_CONNECTIONS
-                )
-
-                # ==================================
-                # COLLECT LANDMARKS
-                # ==================================
-
-                landmarks = []
-
-                for landmark in hand_landmarks.landmark:
-
-                    landmarks.append(landmark.x)
-                    landmarks.append(landmark.y)
-                    landmarks.append(landmark.z)
-
-                input_data = np.array(
-                    landmarks
-                ).reshape(1, -1)
-
-                # ==================================
-                # PREDICT GESTURE
-                # ==================================
-
-                prediction = model.predict(
-                    input_data
-                )[0]
-
-                # ==================================
-                # CORRECT GESTURE
-                # ==================================
-
-                if prediction == correct_gesture:
-
-                    correct_frames += 1
-                    wrong_frames = 0
-
-                else:
-
-                    correct_frames = 0
-                    wrong_frames += 1
-
-                # ==================================
-                # MISSION COMPLETED
-                # ==================================
-
-                if correct_frames >= 10:
-
-                    score += 10
-                    completed = True
-
-                # ==================================
-                # WRONG GESTURE
-                # ==================================
-
-                if wrong_frames >= 30:
-
-                    lives -= 1
-
-                    wrong_frames = 0
-                    correct_frames = 0
-
-                    print("Wrong gesture!")
-                    print(
-                        f"Lives remaining: {lives}"
-                    )
-
-                    if lives <= 0:
-                        completed = True
-
-        # ==========================================
-        # DISPLAY TITLE
-        # ==========================================
-
-        cv2.putText(
+        # Draw landmarks
+        mp_draw.draw_landmarks(
             frame,
-            "CUES & CLUES",
-            (20, 35),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1,
-            (0, 255, 255),
-            2
+            hand_landmarks,
+            mp_hands.HAND_CONNECTIONS
         )
 
-        # ==========================================
-        # DISPLAY MISSION
-        # ==========================================
+        # =================================================
+        # LANDMARK FEATURES
+        # =================================================
 
-        cv2.putText(
-            frame,
-            mission,
-            (20, 75),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.8,
-            (0, 255, 0),
-            2
+        landmarks = []
+
+        for landmark in hand_landmarks.landmark:
+
+            landmarks.append(landmark.x)
+            landmarks.append(landmark.y)
+            landmarks.append(landmark.z)
+
+        input_data = np.array(
+            landmarks
+        ).reshape(1, -1)
+
+        # =================================================
+        # PREDICTION
+        # =================================================
+
+        prediction = model.predict(
+            input_data
+        )[0]
+
+        prediction = str(prediction)
+
+        st.image(
+            cv2.cvtColor(
+                frame,
+                cv2.COLOR_BGR2RGB
+            ),
+            caption="Hand detected",
+            use_container_width=True
         )
 
-        # ==========================================
-        # REQUIRED GESTURE
-        # ==========================================
-
-        cv2.putText(
-            frame,
-            f"Required: {correct_gesture}",
-            (20, 110),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (255, 255, 255),
-            2
+        st.write(
+            f"### Detected sign: **{prediction}**"
         )
 
-        # ==========================================
-        # DETECTED GESTURE
-        # ==========================================
-
-        cv2.putText(
-            frame,
-            f"Detected: {prediction}",
-            (20, 145),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (255, 255, 255),
-            2
-        )
-
-        # ==========================================
-        # SCORE
-        # ==========================================
-
-        cv2.putText(
-            frame,
-            f"Score: {score}",
-            (20, 180),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (255, 255, 255),
-            2
-        )
-
-        # ==========================================
-        # LIVES
-        # ==========================================
-
-        cv2.putText(
-            frame,
-            f"Lives: {lives}",
-            (20, 215),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (255, 255, 255),
-            2
-        )
-
-        # ==========================================
-        # PROGRESS
-        # ==========================================
-
-        cv2.putText(
-            frame,
-            f"Progress: {correct_frames}/10",
-            (20, 250),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (255, 255, 255),
-            2
-        )
-
-        # ==========================================
-        # FEEDBACK
-        # ==========================================
+        # =================================================
+        # CORRECT
+        # =================================================
 
         if prediction == correct_gesture:
 
-            cv2.putText(
-                frame,
-                "CORRECT! HOLD IT!",
-                (20, 300),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
-                (0, 255, 0),
-                2
+            st.success(
+                f"✅ CORRECT! You showed {correct_gesture}."
             )
 
-        elif prediction == "No hand detected":
+            st.session_state.score += 10
 
-            cv2.putText(
-                frame,
-                "SHOW YOUR HAND",
-                (20, 300),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
-                (255, 255, 255),
-                2
-            )
+            st.session_state.mission_index += 1
+
+            st.balloons()
+
+            if st.session_state.mission_index < 3:
+
+                st.button(
+                    "➡️ Continue to next mission",
+                    disabled=True
+                )
+
+            st.rerun()
+
+        # =================================================
+        # WRONG
+        # =================================================
 
         else:
 
-            cv2.putText(
-                frame,
-                "WRONG GESTURE! TRY AGAIN!",
-                (20, 300),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
-                (0, 0, 255),
-                2
+            st.warning(
+                f"❌ Detected {prediction}. "
+                f"Try showing {correct_gesture}."
             )
 
-        # ==========================================
-        # SHOW CAMERA
-        # ==========================================
-
-        cv2.imshow(
-            "CUES & CLUES - Mission",
-            frame
-        )
-
-        # ==========================================
-        # QUIT
-        # ==========================================
-
-        if cv2.waitKey(1) & 0xFF == ord("q"):
-
-            lives = 0
-            completed = True
-            break
-
-    # ==========================================
-    # CLOSE CAMERA
-    # ==========================================
-
-    cap.release()
-    cv2.destroyAllWindows()
-
-    # ==========================================
-    # MISSION RESULT
-    # ==========================================
-
-    if correct_frames >= 10:
-
-        print("Mission completed!")
-        print(f"Score: {score}")
-        print(f"Lives: {lives}")
-
-    elif lives <= 0:
-
-        print("GAME OVER!")
+            if st.button(
+                "Try Again",
+                use_container_width=True
+            ):
+                st.rerun()
 
     else:
 
-        print("Mission failed.")
+        st.image(
+            cv2.cvtColor(
+                frame,
+                cv2.COLOR_BGR2RGB
+            ),
+            caption="No hand detected"
+        )
 
-# ==========================================
-# FINAL RESULT
-# ==========================================
-
-print("\n================================")
-
-if lives > 0:
-
-    print("       GAME COMPLETED!")
+        st.warning(
+            "✋ No hand detected. "
+            "Place your hand clearly in front of the camera."
+        )
 
 else:
 
-    print("       GAME OVER!")
+    st.info(
+        "📷 Click the camera button above and show your sign."
+    )
 
-print("================================")
-print(f"Final Score: {score}")
-print(f"Lives Remaining: {lives}")
-print("================================")
+# =========================================================
+# FOOTER
+# =========================================================
 
-# ==========================================
-# CLEANUP
-# ==========================================
+st.markdown("---")
 
-hands.close()
+st.caption(
+    "CUES & CLUES • AI-powered Sign Language Communication"
+)
