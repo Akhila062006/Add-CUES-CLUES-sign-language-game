@@ -8,7 +8,7 @@ from pathlib import Path
 # CUES & CLUES - Sign Language Game
 # ==========================================
 
-# Load KNN model
+# Load KNN model from the same folder as this file
 BASE_DIR = Path(__file__).resolve().parent
 MODEL_PATH = BASE_DIR / "knn_model.pkl"
 
@@ -18,35 +18,14 @@ model = joblib.load(MODEL_PATH)
 # MEDIAPIPE
 # ==========================================
 
-from mediapipe.tasks import python
-from mediapipe.tasks.python import vision
+mp_hands = mp.solutions.hands
+mp_draw = mp.solutions.drawing_utils
 
-# NOTE:
-# The newer MediaPipe version uses the Tasks API.
-# A hand-landmarker model file is required.
-
-HAND_MODEL_PATH = BASE_DIR / "hand_landmarker.task"
-
-if not HAND_MODEL_PATH.exists():
-    raise FileNotFoundError(
-        f"Missing MediaPipe model: {HAND_MODEL_PATH}"
-    )
-
-base_options = python.BaseOptions(
-    model_asset_path=str(HAND_MODEL_PATH)
-)
-
-options = vision.HandLandmarkerOptions(
-    base_options=base_options,
-    running_mode=vision.RunningMode.IMAGE,
-    num_hands=1,
-    min_hand_detection_confidence=0.7,
-    min_hand_presence_confidence=0.7,
+hands = mp_hands.Hands(
+    static_image_mode=False,
+    max_num_hands=1,
+    min_detection_confidence=0.7,
     min_tracking_confidence=0.7
-)
-
-hand_landmarker = vision.HandLandmarker.create_from_options(
-    options
 )
 
 # ==========================================
@@ -85,6 +64,7 @@ choice = input()
 
 if choice.lower() == "q":
     print("Game closed.")
+    hands.close()
     exit()
 
 # ==========================================
@@ -115,6 +95,10 @@ for mission, instruction, correct_gesture in missions:
     wrong_frames = 0
     prediction = "No hand detected"
 
+    # ======================================
+    # CAMERA LOOP
+    # ======================================
+
     while cap.isOpened() and not completed:
 
         success, frame = cap.read()
@@ -123,25 +107,17 @@ for mission, instruction, correct_gesture in missions:
             print("Camera error!")
             break
 
+        # Mirror camera
         frame = cv2.flip(frame, 1)
 
-        # ==================================
-        # MEDIAPIPE HAND DETECTION
-        # ==================================
-
+        # Convert BGR → RGB
         rgb = cv2.cvtColor(
             frame,
             cv2.COLOR_BGR2RGB
         )
 
-        mp_image = mp.Image(
-            image_format=mp.ImageFormat.SRGB,
-            data=rgb
-        )
-
-        detection_result = hand_landmarker.detect(
-            mp_image
-        )
+        # Detect hand
+        results = hands.process(rgb)
 
         prediction = "No hand detected"
 
@@ -149,131 +125,85 @@ for mission, instruction, correct_gesture in missions:
         # HAND DETECTED
         # ==================================
 
-        if detection_result.hand_landmarks:
+        if results.multi_hand_landmarks:
 
-            hand_landmarks = detection_result.hand_landmarks[0]
+            for hand_landmarks in results.multi_hand_landmarks:
 
-            # Draw landmarks
-            height, width, _ = frame.shape
-
-            for landmark in hand_landmarks:
-
-                x = int(landmark.x * width)
-                y = int(landmark.y * height)
-
-                cv2.circle(
+                # Draw landmarks
+                mp_draw.draw_landmarks(
                     frame,
-                    (x, y),
-                    5,
-                    (0, 255, 0),
-                    -1
+                    hand_landmarks,
+                    mp_hands.HAND_CONNECTIONS
                 )
 
-            # ==================================
-            # DRAW CONNECTIONS
-            # ==================================
+                # ==================================
+                # COLLECT LANDMARKS
+                # ==================================
 
-            connections = [
-                (0, 1), (1, 2), (2, 3), (3, 4),
-                (0, 5), (5, 6), (6, 7), (7, 8),
-                (0, 9), (9, 10), (10, 11), (11, 12),
-                (0, 13), (13, 14), (14, 15), (15, 16),
-                (0, 17), (17, 18), (18, 19), (19, 20),
-                (5, 9), (9, 13), (13, 17)
-            ]
+                landmarks = []
 
-            for start, end in connections:
+                for landmark in hand_landmarks.landmark:
 
-                x1 = int(
-                    hand_landmarks[start].x * width
-                )
-                y1 = int(
-                    hand_landmarks[start].y * height
-                )
+                    landmarks.append(landmark.x)
+                    landmarks.append(landmark.y)
+                    landmarks.append(landmark.z)
 
-                x2 = int(
-                    hand_landmarks[end].x * width
-                )
-                y2 = int(
-                    hand_landmarks[end].y * height
-                )
+                input_data = np.array(
+                    landmarks
+                ).reshape(1, -1)
 
-                cv2.line(
-                    frame,
-                    (x1, y1),
-                    (x2, y2),
-                    (0, 255, 0),
-                    2
-                )
+                # ==================================
+                # PREDICT GESTURE
+                # ==================================
 
-            # ==================================
-            # COLLECT LANDMARKS
-            # ==================================
+                prediction = model.predict(
+                    input_data
+                )[0]
 
-            landmarks = []
+                # ==================================
+                # CORRECT GESTURE
+                # ==================================
 
-            for landmark in hand_landmarks:
+                if prediction == correct_gesture:
 
-                landmarks.append(landmark.x)
-                landmarks.append(landmark.y)
-                landmarks.append(landmark.z)
+                    correct_frames += 1
+                    wrong_frames = 0
 
-            input_data = np.array(
-                landmarks
-            ).reshape(1, -1)
+                else:
 
-            # ==================================
-            # PREDICT GESTURE
-            # ==================================
+                    correct_frames = 0
+                    wrong_frames += 1
 
-            prediction = model.predict(
-                input_data
-            )[0]
+                # ==================================
+                # MISSION COMPLETED
+                # ==================================
 
-            # ==================================
-            # CORRECT GESTURE
-            # ==================================
+                if correct_frames >= 10:
 
-            if prediction == correct_gesture:
-
-                correct_frames += 1
-                wrong_frames = 0
-
-            else:
-
-                correct_frames = 0
-                wrong_frames += 1
-
-            # ==================================
-            # MISSION COMPLETED
-            # ==================================
-
-            if correct_frames >= 10:
-
-                score += 10
-                completed = True
-
-            # ==================================
-            # WRONG GESTURE
-            # ==================================
-
-            if wrong_frames >= 30:
-
-                lives -= 1
-
-                wrong_frames = 0
-                correct_frames = 0
-
-                print("Wrong gesture!")
-                print(
-                    f"Lives remaining: {lives}"
-                )
-
-                if lives <= 0:
+                    score += 10
                     completed = True
 
+                # ==================================
+                # WRONG GESTURE
+                # ==================================
+
+                if wrong_frames >= 30:
+
+                    lives -= 1
+
+                    wrong_frames = 0
+                    correct_frames = 0
+
+                    print("Wrong gesture!")
+                    print(
+                        f"Lives remaining: {lives}"
+                    )
+
+                    if lives <= 0:
+                        completed = True
+
         # ==========================================
-        # DISPLAY
+        # DISPLAY TITLE
         # ==========================================
 
         cv2.putText(
@@ -286,6 +216,10 @@ for mission, instruction, correct_gesture in missions:
             2
         )
 
+        # ==========================================
+        # DISPLAY MISSION
+        # ==========================================
+
         cv2.putText(
             frame,
             mission,
@@ -295,6 +229,10 @@ for mission, instruction, correct_gesture in missions:
             (0, 255, 0),
             2
         )
+
+        # ==========================================
+        # REQUIRED GESTURE
+        # ==========================================
 
         cv2.putText(
             frame,
@@ -306,6 +244,10 @@ for mission, instruction, correct_gesture in missions:
             2
         )
 
+        # ==========================================
+        # DETECTED GESTURE
+        # ==========================================
+
         cv2.putText(
             frame,
             f"Detected: {prediction}",
@@ -315,6 +257,10 @@ for mission, instruction, correct_gesture in missions:
             (255, 255, 255),
             2
         )
+
+        # ==========================================
+        # SCORE
+        # ==========================================
 
         cv2.putText(
             frame,
@@ -326,6 +272,10 @@ for mission, instruction, correct_gesture in missions:
             2
         )
 
+        # ==========================================
+        # LIVES
+        # ==========================================
+
         cv2.putText(
             frame,
             f"Lives: {lives}",
@@ -335,6 +285,10 @@ for mission, instruction, correct_gesture in missions:
             (255, 255, 255),
             2
         )
+
+        # ==========================================
+        # PROGRESS
+        # ==========================================
 
         cv2.putText(
             frame,
@@ -387,7 +341,7 @@ for mission, instruction, correct_gesture in missions:
             )
 
         # ==========================================
-        # CAMERA
+        # SHOW CAMERA
         # ==========================================
 
         cv2.imshow(
@@ -395,7 +349,10 @@ for mission, instruction, correct_gesture in missions:
             frame
         )
 
-        # Q = QUIT
+        # ==========================================
+        # QUIT
+        # ==========================================
+
         if cv2.waitKey(1) & 0xFF == ord("q"):
 
             lives = 0
@@ -446,4 +403,8 @@ print(f"Final Score: {score}")
 print(f"Lives Remaining: {lives}")
 print("================================")
 
-hand_landmarker.close()
+# ==========================================
+# CLEANUP
+# ==========================================
+
+hands.close()
